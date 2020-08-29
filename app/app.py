@@ -7,8 +7,13 @@ from flask_bcrypt import Bcrypt
 from database.db import initialize_db
 from database.models import Chemical
 from flask_marshmallow import Marshmallow
+from flask_jwt_extended import JWTManager
 from numpy.f2py.crackfortran import debug, true_intent_list
 from database.models import User
+from flask_jwt_extended import JWTManager
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import jwt_required
+import datetime
 
 app = Flask(__name__)
 
@@ -39,11 +44,14 @@ app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/chemical'
 }
 
+app.config.from_envvar('ENV_FILE_LOCATION')
+
 
 
 db = initialize_db(app)
 ma = Marshmallow(app)
 bcrypt = Bcrypt(app)
+jwt = JWTManager(app)
 
 class ChemicalSchema(ma.Schema):  
         
@@ -55,17 +63,15 @@ chemical_schema = ChemicalSchema()
 chemicals_schema = ChemicalSchema(many=True)
 
 
-
-
-
 @app.route('/')
 def hello():
     return   jsonify(chemicals)
 
 @app.route('/chemicals', methods=['GET'])
+# @jwt_required
 def get_chemicals():
     chemicals = Chemical.objects().all()   
-    return Response(chemical_schema.dumps(chemicals))
+    return Response(chemicals_schema.dumps(chemicals))
 
 @app.route('/createuser', methods=['POST'])
 def createuser():
@@ -75,6 +81,20 @@ def createuser():
     user.save()
     id = user.id 
     return {'id': str(id)}, 200
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    body = request.get_json(force=True)
+    user = User.objects.get(email=body.get('email'))
+    authorized = user.check_password(body.get('password'))
+    if not authorized:
+        return {'error': 'Email or password invalid'}, 401
+    expires = datetime.timedelta(days=7)
+    access_token = create_access_token(identity=str(user.id), expires_delta=expires)
+    return {'token': access_token}, 200
+        
+
   
 
 
